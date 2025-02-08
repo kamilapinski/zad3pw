@@ -19,9 +19,19 @@ struct Mio {
 // TODO: delete this once not needed.
 #define UNIMPLEMENTED (exit(42))
 
-Mio* mio_create(Executor* executor) { UNIMPLEMENTED; }
+Mio* mio_create(Executor* executor) { 
+    // TODO: implement me
+    Mio* mio = malloc(sizeof(Mio));
+    if (mio == NULL) {
+        return NULL;
+    }
+    return mio;
+}
 
-void mio_destroy(Mio* mio) { UNIMPLEMENTED; }
+void mio_destroy(Mio* mio) {
+    // TODO: implement me
+    free(mio);
+}
 
 int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
 {

@@ -3,3 +3,10 @@ notatki.md
 *.o
 *.out
 *.exe
+CMakeFiles
+tests
+*.cmake
+*.txt
+*.a
+*.log
+Makefile

@@ -1,0 +1,5 @@
+.vscode
+notatki.md
+*.o
+*.out
+*.exe

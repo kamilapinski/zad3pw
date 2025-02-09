@@ -99,7 +99,7 @@ struct Executor {
     // jeżeli zadanie, czeka aż zostanie wywołany Waker, to też executor nie musi trzymać,
     // ale jeżeli Executor nie ma aktywnych zadań, to musi wywołać mio_poll()
     FuturesQueue* queue;
-    size_t count_of_pending_tasks;
+    size_t count_of_sleeping_tasks;
 };
 
 // TODO: delete this once not needed.
@@ -127,12 +127,13 @@ Executor* executor_create(size_t max_queue_size) {
 
     executor->mio = mio;
     executor->queue = queue;
-    executor->count_of_pending_tasks = 0;
+    executor->count_of_sleeping_tasks = 0;
 
     return executor;
  }
 
 void waker_wake(Waker* waker) { 
+    ((Executor*)waker->executor)->count_of_sleeping_tasks--;
     executor_spawn(waker->executor, waker->future); // TODO: sprawdzić czy to jest ok
 }
 
@@ -142,7 +143,6 @@ void executor_spawn(Executor* executor, Future* fut) {
         return;
     }
     fut->is_active = true;
-    executor->count_of_pending_tasks++;
  }
 
 // Executor w pętli przetwarza zadania:
@@ -157,8 +157,8 @@ void executor_spawn(Executor* executor, Future* fut) {
 
 void executor_run(Executor* executor) { 
     debug("Executor %p running\n", executor);
-    while (executor->count_of_pending_tasks > 0) {
-        debug("Executor %p processing tasks; Pending tasks: %zu\n", executor, executor->count_of_pending_tasks);
+    while (_futures_queue_size(executor->queue) > 0) {
+        debug("Executor %p processing tasks; Pending tasks: %zu\n", executor, executor->count_of_sleeping_tasks);
 
 
         Future* future;
@@ -175,7 +175,6 @@ void executor_run(Executor* executor) {
 
         FutureState future_state = future->progress(future, executor->mio, waker);
         
-        executor->count_of_pending_tasks--;
         
         if (future_state == FUTURE_COMPLETED || future_state == FUTURE_FAILURE) {
             debug("Executor %p task completed with future_state=%d\n", executor, future_state);
@@ -185,11 +184,13 @@ void executor_run(Executor* executor) {
         }
         else {
             debug("Executor %p task pending\n", executor);
-            if (_futures_queue_size(executor->queue) == 0) { // TODO: nie do końca musi być tutaj
-                mio_poll(executor->mio);
-            }
+            executor->count_of_sleeping_tasks++;
             // TODO: musi być dodany chyba licznik spawned tasków
             // i wtedy mio_poll jest gdy spawned_task > 0 i _futures_queue_size(executor->queue) == 0
+        }
+
+        if (_futures_queue_size(executor->queue) == 0 && executor->count_of_sleeping_tasks > 0) { // TODO: nie do końca musi być tutaj
+            mio_poll(executor->mio);
         }
     }
  }

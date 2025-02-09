@@ -11,6 +11,7 @@
 
 typedef struct {
     Future** futures;
+    size_t max_size;
     size_t size;
     size_t front;
     size_t back;
@@ -29,7 +30,8 @@ FuturesQueue* _futures_queue_create(size_t max_queue_size) {
         return NULL;
     }
 
-    queue->size = max_queue_size;
+    queue->max_size = max_queue_size;
+    queue->size = 0;
     queue->front = 0;
     queue->back = 0;
 
@@ -37,29 +39,41 @@ FuturesQueue* _futures_queue_create(size_t max_queue_size) {
 }
 
 int _futures_queue_push(FuturesQueue* queue, Future* future) {
-    if ((queue->back + 1) > queue->size) {
+    if (queue->size == queue->max_size) {
         return -1;
     }
 
     queue->futures[queue->back] = future;
-    queue->back++;
+    queue->size++;
+
+    if (queue->back == queue->max_size - 1) {
+        queue->back = 0;
+    } else {
+        queue->back++;
+    }
 
     return 0;
 }
 
 int _futures_queue_pop(FuturesQueue* queue, Future** future) {
-    if (queue->front >= queue->back) {
+    if (queue->size == 0) {
         return -1;
     }
 
     *future = queue->futures[queue->front];
-    queue->front++;
+    queue->size--;
+
+    if (queue->front == queue->max_size - 1) {
+        queue->front = 0;
+    } else {
+        queue->front++;
+    }
 
     return 0;
 }
 
 Future* _futures_queue_front(FuturesQueue* queue) {
-    if (queue->front >= queue->back) {
+    if (queue->size == 0) {
         return NULL;
     }
 
@@ -67,7 +81,7 @@ Future* _futures_queue_front(FuturesQueue* queue) {
 }
 
 size_t _futures_queue_size(FuturesQueue* queue) {
-    return queue->back - queue->front;
+    return queue->size;
 }
 
 void _futures_queue_destroy(FuturesQueue* queue) {
@@ -142,14 +156,17 @@ void executor_spawn(Executor* executor, Future* fut) {
     // będzie potrzeba).
 
 void executor_run(Executor* executor) { 
+    debug("Executor %p running\n", executor);
     while (executor->count_of_pending_tasks > 0) {
-        if (_futures_queue_size(executor->queue) == 0) {
-            mio_poll(executor->mio);
-        }
+        debug("Executor %p processing tasks; Pending tasks: %zu\n", executor, executor->count_of_pending_tasks);
 
-        Future* future = _futures_queue_front(executor->queue);
+
+        Future* future;
+        
+        _futures_queue_pop(executor->queue, &future);
         if (future == NULL) {
-            continue;
+            fprintf(stderr, "Failed to pop future from the queue\n");
+            return;
         }
 
         Waker waker;
@@ -158,11 +175,21 @@ void executor_run(Executor* executor) {
 
         FutureState future_state = future->progress(future, executor->mio, waker);
         
+        executor->count_of_pending_tasks--;
+        
         if (future_state == FUTURE_COMPLETED || future_state == FUTURE_FAILURE) {
+            debug("Executor %p task completed with future_state=%d\n", executor, future_state);
             future->is_active = false;
             // TODO: czy nie trzeba ustawiać future->ok
             future->errcode = future_state == FUTURE_COMPLETED ? 0 : 1; // TODO: czy tak trzeba ustawiać?
-            executor->count_of_pending_tasks--;
+        }
+        else {
+            debug("Executor %p task pending\n", executor);
+            if (_futures_queue_size(executor->queue) == 0) { // TODO: nie do końca musi być tutaj
+                mio_poll(executor->mio);
+            }
+            // TODO: musi być dodany chyba licznik spawned tasków
+            // i wtedy mio_poll jest gdy spawned_task > 0 i _futures_queue_size(executor->queue) == 0
         }
     }
  }

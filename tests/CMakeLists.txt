@@ -15,6 +15,10 @@ target_link_libraries(mio_test executor mio future test_utils)
 add_executable(then_test then_test.c)
 target_link_libraries(then_test executor mio future err test_utils)
 
+# TODO: delete if deleted
+add_executable(join_test join_test.c)
+target_link_libraries(join_test executor mio future err test_utils)
+
 
 enable_testing()
 add_test(NAME ExecutorTest COMMAND executor_test)

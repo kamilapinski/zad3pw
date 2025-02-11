@@ -3,6 +3,7 @@
 
 #include "future.h"
 #include "waker.h"
+#include "executor.h"
 
 // TODO: delete this once not needed.
 #define UNIMPLEMENTED (exit(42))
@@ -75,14 +76,56 @@ ThenFuture future_then(Future* fut1, Future* fut2)
     };
 }
 
+static FutureState join_progress(Future* base, Mio* mio, Waker waker)
+{
+    JoinFuture* self = (JoinFuture*)base;
+    debug("JoinFuture %p progress\n", self);
+
+    // TODO: chyba nie musi być ustawiony ok
+    if (self->fut1->ok || self->fut1->errcode) {
+        self->fut1_completed = !self->fut1->errcode ? FUTURE_COMPLETED : FUTURE_FAILURE;
+
+        self->result.fut1.ok = self->fut1->ok;
+        self->result.fut1.errcode = self->fut1->errcode;
+    }
+    else {
+        if (!self->fut1->is_active)
+            executor_spawn(waker.executor, self->fut1);
+    }
+    
+    if (self->fut2->ok || self->fut2->errcode) {
+        self->fut2_completed = !self->fut2->errcode ? FUTURE_COMPLETED : FUTURE_FAILURE;
+
+        self->result.fut2.ok = self->fut2->ok;
+        self->result.fut2.errcode = self->fut2->errcode;
+    }
+    else {
+        if (!self->fut2->is_active)
+            executor_spawn(waker.executor, self->fut2);
+    }
+
+    if (self->fut1_completed && self->fut2_completed) {
+        if (self->result.fut1.errcode || self->result.fut2.errcode) {
+            return FUTURE_FAILURE;
+        }
+        return FUTURE_COMPLETED;
+    }
+
+    return FUTURE_PENDING;
+}
+
 JoinFuture future_join(Future* fut1, Future* fut2)
 {
-    UNIMPLEMENTED;
     return (JoinFuture) {
-        // TODO: correct initialization.
-        // .base = ... ,
-        // .fut1 = ... ,
-        // ...
+        .base = future_create(join_progress),
+        .fut1 = fut1,
+        .fut2 = fut2,
+        .fut1_completed = FUTURE_PENDING,
+        .fut2_completed = FUTURE_PENDING,
+        .result = {
+            .fut1 = { .errcode = 0, .ok = NULL },
+            .fut2 = { .errcode = 0, .ok = NULL },
+        },
     };
 }
 

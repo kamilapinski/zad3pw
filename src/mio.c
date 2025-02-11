@@ -17,12 +17,9 @@
 struct Mio {
     int epoll_fd;
     Executor* executor;
-    struct epoll_event* events[MAX_FDS];
     size_t count_of_registered_fds;
 };
 
-// TODO: delete this once not needed.
-#define UNIMPLEMENTED (exit(42))
 
 Mio* mio_create(Executor* executor) { 
     if (executor == NULL) {
@@ -40,10 +37,6 @@ Mio* mio_create(Executor* executor) {
         debug("Failed to create epoll file descriptor\n");
         free(mio);
         return NULL;
-    }
-
-    for (size_t i = 0; i < MAX_FDS; i++) {
-        mio->events[i] = NULL;
     }
 
     mio->executor = executor;
@@ -75,8 +68,6 @@ int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
     event->data.fd = fd;
     event->data.ptr = waker.future;
 
-    // TODO: wiele waker'ów może być powiązanych z jednym deskryptorem
-
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, event)) {
         debug("Failed to add file descriptor to epoll\n");
         free(event);
@@ -84,7 +75,6 @@ int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
     }
 
     mio->count_of_registered_fds++;
-    mio->events[fd] = event;
 
     return 0;
 }
@@ -93,20 +83,14 @@ int mio_unregister(Mio* mio, int fd)
 {
     debug("Unregistering (from Mio = %p) fd = %d\n", mio, fd);
 
-    if (mio->events[fd] == NULL) {
-        debug("File descriptor %d is not registered\n", fd);
-        return -1;
-    }
-    free(mio->events[fd]);
-    mio->events[fd] = NULL;
-    mio->count_of_registered_fds--;
-
     int epoll_fd = mio->epoll_fd;
 
     if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL)) {
         debug("Failed to remove file descriptor from epoll\n");
         return -1;
     }
+
+    mio->count_of_registered_fds--;
 
     return 0;
 }
@@ -142,12 +126,7 @@ void mio_poll(Mio* mio)
 
 int _mio_unregister_descriptors(Mio* mio) {
     for (size_t i = 0; i < MAX_FDS; i++) {
-        if (mio->events[i] != NULL) {
-            if (mio_unregister(mio, i)) {
-                debug("Failed to unregister file descriptor %zu\n", i);
-                return -1;
-            }
-        }
+        mio_unregister(mio, i);
     }
     return 0;
 }

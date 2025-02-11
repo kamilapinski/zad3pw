@@ -18,6 +18,7 @@ struct Mio {
     int epoll_fd;
     Executor* executor;
     struct epoll_event* events[MAX_FDS];
+    size_t count_of_registered_fds;
 };
 
 // TODO: delete this once not needed.
@@ -25,7 +26,7 @@ struct Mio {
 
 Mio* mio_create(Executor* executor) { 
     if (executor == NULL) {
-        fprintf(stderr, "Executor is NULL\n");
+        debug("Executor is NULL\n");
         return NULL;
     }
 
@@ -36,7 +37,7 @@ Mio* mio_create(Executor* executor) {
 
     mio->epoll_fd = epoll_create1(0);
     if (mio->epoll_fd == -1) {
-        fprintf(stderr, "Failed to create epoll file descriptor\n");
+        debug("Failed to create epoll file descriptor\n");
         free(mio);
         return NULL;
     }
@@ -66,7 +67,7 @@ int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
     struct epoll_event* event = malloc(sizeof(struct epoll_event));
 
     if (event == NULL) {
-        fprintf(stderr, "Failed to allocate memory for epoll event\n");
+        debug("Failed to allocate memory for epoll event\n");
         return -1;
     }
 
@@ -74,12 +75,15 @@ int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
     event->data.fd = fd;
     event->data.ptr = waker.future;
 
+    // TODO: wiele waker'ów może być powiązanych z jednym deskryptorem
+
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, event)) {
+        debug("Failed to add file descriptor to epoll\n");
         free(event);
-        fprintf(stderr, "Failed to add file descriptor to epoll\n");
         return -1;
     }
 
+    mio->count_of_registered_fds++;
     mio->events[fd] = event;
 
     return 0;
@@ -90,16 +94,17 @@ int mio_unregister(Mio* mio, int fd)
     debug("Unregistering (from Mio = %p) fd = %d\n", mio, fd);
 
     if (mio->events[fd] == NULL) {
-        fprintf(stderr, "File descriptor %d is not registered\n", fd);
+        debug("File descriptor %d is not registered\n", fd);
         return -1;
     }
     free(mio->events[fd]);
     mio->events[fd] = NULL;
+    mio->count_of_registered_fds--;
 
     int epoll_fd = mio->epoll_fd;
 
     if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL)) {
-        fprintf(stderr, "Failed to remove file descriptor from epoll\n");
+        debug("Failed to remove file descriptor from epoll\n");
         return -1;
     }
 
@@ -112,6 +117,11 @@ int mio_unregister(Mio* mio, int fd)
 void mio_poll(Mio* mio)
 {
     debug("Mio (%p) polling\n", mio);
+
+    if (mio->count_of_registered_fds == 0) {
+        debug("No file descriptors registered\n");
+        return;
+    }
 
     int epoll_fd = mio->epoll_fd;
 
@@ -134,7 +144,7 @@ int _mio_unregister_descriptors(Mio* mio) {
     for (size_t i = 0; i < MAX_FDS; i++) {
         if (mio->events[i] != NULL) {
             if (mio_unregister(mio, i)) {
-                fprintf(stderr, "Failed to unregister file descriptor %zu\n", i);
+                debug("Failed to unregister file descriptor %zu\n", i);
                 return -1;
             }
         }
@@ -144,11 +154,11 @@ int _mio_unregister_descriptors(Mio* mio) {
 
 void mio_destroy(Mio* mio) {
     if(_mio_unregister_descriptors(mio)) { // czy trzeba zamykać deskryptory?
-        fprintf(stderr, "Failed to unregister descriptors\n");
+        debug("Failed to unregister descriptors\n");
     }
 
     if (close(mio->epoll_fd)) {
-        fprintf(stderr, "Failed to close epoll file descriptor\n");
+        debug("Failed to close epoll file descriptor\n");
     }
 
     free(mio);

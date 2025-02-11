@@ -99,7 +99,7 @@ struct Executor {
     // jeżeli zadanie, czeka aż zostanie wywołany Waker, to też executor nie musi trzymać,
     // ale jeżeli Executor nie ma aktywnych zadań, to musi wywołać mio_poll()
     FuturesQueue* queue;
-    size_t count_of_sleeping_tasks;
+    size_t count_of_pending_tasks;
 };
 
 // TODO: delete this once not needed.
@@ -127,19 +127,18 @@ Executor* executor_create(size_t max_queue_size) {
 
     executor->mio = mio;
     executor->queue = queue;
-    executor->count_of_sleeping_tasks = 0;
 
     return executor;
  }
 
-void waker_wake(Waker* waker) { 
-    ((Executor*)waker->executor)->count_of_sleeping_tasks--;
+void waker_wake(Waker* waker) {
+    debug("Waking up Waker %p\n", waker);
     executor_spawn(waker->executor, waker->future); // TODO: sprawdzić czy to jest ok
 }
 
 void executor_spawn(Executor* executor, Future* fut) { 
     if (_futures_queue_push(executor->queue, fut) == -1) {
-        fprintf(stderr, "Failed to push future to the queue\n");
+        debug("Failed to push future to the queue\n");
         return;
     }
     fut->is_active = true;
@@ -158,14 +157,14 @@ void executor_spawn(Executor* executor, Future* fut) {
 void executor_run(Executor* executor) { 
     debug("Executor %p running\n", executor);
     while (_futures_queue_size(executor->queue) > 0) {
-        debug("Executor %p processing tasks; Pending tasks: %zu\n", executor, executor->count_of_sleeping_tasks);
+        debug("Executor %p processing tasks\n", executor);
 
 
         Future* future;
         
         _futures_queue_pop(executor->queue, &future);
         if (future == NULL) {
-            fprintf(stderr, "Failed to pop future from the queue\n");
+            debug("Executor %p failed to pop future from the queue\n", executor);
             return;
         }
 
@@ -184,12 +183,11 @@ void executor_run(Executor* executor) {
         }
         else {
             debug("Executor %p task pending\n", executor);
-            executor->count_of_sleeping_tasks++;
             // TODO: musi być dodany chyba licznik spawned tasków
             // i wtedy mio_poll jest gdy spawned_task > 0 i _futures_queue_size(executor->queue) == 0
         }
 
-        if (_futures_queue_size(executor->queue) == 0 && executor->count_of_sleeping_tasks > 0) { // TODO: nie do końca musi być tutaj
+        if (_futures_queue_size(executor->queue) == 0) { // TODO: nie do końca musi być tutaj
             mio_poll(executor->mio);
         }
     }

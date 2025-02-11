@@ -2,7 +2,7 @@
 #define DEBUG_H
 
 // TODO: comment this to disable debug prints
-#define DEBUG_PRINTS
+// #define DEBUG_PRINTS
 
 #ifdef DEBUG_PRINTS
 

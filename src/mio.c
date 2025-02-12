@@ -17,6 +17,7 @@
 struct Mio {
     int epoll_fd;
     Executor* executor;
+    struct epoll_event* events[MAX_FDS];
     size_t count_of_registered_fds;
 };
 
@@ -39,7 +40,11 @@ Mio* mio_create(Executor* executor) {
         return NULL;
     }
 
+    for (size_t i = 0; i < MAX_FDS; i++)
+        mio->events[i] = NULL;
+
     mio->executor = executor;
+    mio->count_of_registered_fds = 0;
 
     return mio;
 }
@@ -74,6 +79,7 @@ int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
         return -1;
     }
 
+    mio->events[fd] = event;
     mio->count_of_registered_fds++;
 
     return 0;
@@ -126,7 +132,10 @@ void mio_poll(Mio* mio)
 
 int _mio_unregister_descriptors(Mio* mio) {
     for (size_t i = 0; i < MAX_FDS; i++) {
-        mio_unregister(mio, i);
+        if (mio->events[i] != NULL) {
+            mio_unregister(mio, i);
+            free(mio->events[i]);
+        }
     }
     return 0;
 }

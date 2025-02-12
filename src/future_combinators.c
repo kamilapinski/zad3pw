@@ -5,7 +5,6 @@
 #include "waker.h"
 #include "executor.h"
 
-
 static FutureState then_progress(Future* base, Mio* mio, Waker waker)
 {
     ThenFuture* self = (ThenFuture*)base;
@@ -33,7 +32,7 @@ static FutureState then_progress(Future* base, Mio* mio, Waker waker)
             // chyba nie możemy zrobić mio_register, bo nie wiadomo na co czekać
             // TODO: chyba jednak trzeba zrobić opakowanie na fut, który będzie
             // wywoływać mio_register
-            waker_wake(&waker);
+            //waker_wake(&waker);
             return FUTURE_PENDING;
         }
     }
@@ -58,7 +57,7 @@ static FutureState then_progress(Future* base, Mio* mio, Waker waker)
     }
     else {
         // chyba nie możemy zrobić mio_register, bo nie wiadomo na co czekać
-        waker_wake(&waker);
+        //waker_wake(&waker);
         return FUTURE_PENDING;
     }
 }
@@ -66,7 +65,6 @@ static FutureState then_progress(Future* base, Mio* mio, Waker waker)
 ThenFuture future_then(Future* fut1, Future* fut2)
 {
     return (ThenFuture) {
-        // TODO: correct initialization.
         .base = future_create(then_progress),
         .fut1 = fut1,
         .fut2 = fut2,

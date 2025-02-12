@@ -194,7 +194,8 @@ void executor_run(Executor* executor) {
  }
 
 void executor_destroy(Executor* executor) { 
-    mio_destroy(executor->mio);
+    debug("Destroying Executor %p\n", executor);
     _futures_queue_destroy(executor->queue);
+    mio_destroy(executor->mio);
     free(executor);
  }

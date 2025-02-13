@@ -206,6 +206,7 @@ typedef struct {
     Future base;
     Future* fut;
     int nr;
+    bool stop;
     SelectFuture* father;
 } SelectPackFuture;
 
@@ -214,13 +215,19 @@ static FutureState select_pack_progress(Future* base, Mio* mio, Waker waker) {
     SelectPackFuture* self = (SelectPackFuture*)base;
     debug("SelectPackFuture %p progress\n", self);
 
+    FutureState fut_state = self->fut->progress(self->fut, mio, waker);
+
     if (self->father->which_completed == SELECT_COMPLETED_FUT1 ||
     self->father->which_completed == SELECT_COMPLETED_FUT2 ||
-    self->father->which_completed == SELECT_FAILED_BOTH) {
-        return FUTURE_FAILURE;
+    self->father->which_completed == SELECT_FAILED_BOTH ||
+    self->stop) {
+        if (fut_state == FUTURE_PENDING) {
+            return FUTURE_PENDING;
+        }
+        executor_spawn(waker.executor, (Future*)self->father);
+        return fut_state;
     }
 
-    FutureState fut_state = self->fut->progress(self->fut, mio, waker);
 
     if (fut_state == FUTURE_COMPLETED) {
         self->base.ok = self->fut->ok;
@@ -228,11 +235,11 @@ static FutureState select_pack_progress(Future* base, Mio* mio, Waker waker) {
 
         if (self->nr == 1 && self->father->which_completed != SELECT_COMPLETED_FUT2) {
             self->father->which_completed = SELECT_COMPLETED_FUT1;
-            self->father->base.progress((Future*)self->father, mio, waker);
+            executor_spawn(waker.executor, (Future*)self->father);
         }
         else if (self->father->which_completed != SELECT_COMPLETED_FUT1) {
             self->father->which_completed = SELECT_COMPLETED_FUT2;
-            self->father->base.progress((Future*)self->father, mio, waker);
+            executor_spawn(waker.executor, (Future*)self->father);
         }
         return FUTURE_COMPLETED;
     }
@@ -245,7 +252,7 @@ static FutureState select_pack_progress(Future* base, Mio* mio, Waker waker) {
                 self->father->which_completed = SELECT_FAILED_FUT1;
             else {
                 self->father->which_completed = SELECT_FAILED_BOTH;
-                self->father->base.progress((Future*)self->father, mio, waker);
+                executor_spawn(waker.executor, (Future*)self->father);
             }
         }
         else {
@@ -253,7 +260,7 @@ static FutureState select_pack_progress(Future* base, Mio* mio, Waker waker) {
                 self->father->which_completed = SELECT_FAILED_FUT2;
             else {
                 self->father->which_completed = SELECT_FAILED_BOTH;
-                self->father->base.progress((Future*)self->father, mio, waker);
+                executor_spawn(waker.executor, (Future*)self->father);
             }
         }
         return FUTURE_FAILURE;
@@ -267,6 +274,7 @@ SelectPackFuture future_select_pack(Future* fut, int nr, SelectFuture* father) {
         .base = future_create(select_pack_progress),
         .fut = fut,
         .nr = nr,
+        .stop = false,
         .father = father,
     };
 }
@@ -289,6 +297,19 @@ static FutureState select_progress(Future* base, Mio* mio, Waker waker)
         executor_spawn(waker.executor, self->fut2);
     }
 
+    if (!self->fut1->is_active && !self->fut2->is_active) {
+        self->fut1 = pack1->fut;
+        self->fut2 = pack2->fut;
+
+        free(pack1);
+        free(pack2);
+        
+        if (self->which_completed == SELECT_FAILED_BOTH)
+            return FUTURE_FAILURE;
+        else
+            return FUTURE_COMPLETED;
+    }
+
     if (self->which_completed == SELECT_COMPLETED_FUT1) {
         self->base.ok = self->fut1->ok;
     }
@@ -299,22 +320,12 @@ static FutureState select_progress(Future* base, Mio* mio, Waker waker)
 
     if (self->which_completed == SELECT_COMPLETED_FUT1 ||
     self->which_completed == SELECT_COMPLETED_FUT2) {
-        self->fut1 = pack1->fut;
-        self->fut2 = pack2->fut;
-
-        free(pack1);
-        free(pack2);
-
-        return FUTURE_COMPLETED;
+        pack1->stop = true;
+        pack2->stop = true;
     }
     else if (self->which_completed == SELECT_FAILED_BOTH) {
-        self->fut1 = pack1->fut;
-        self->fut2 = pack2->fut;
-
-        free(pack1);
-        free(pack2);
-
-        return FUTURE_FAILURE;
+        pack1->stop = true;
+        pack2->stop = true;
     }
 
     return FUTURE_PENDING;

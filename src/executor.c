@@ -127,13 +127,18 @@ Executor* executor_create(size_t max_queue_size) {
 
     executor->mio = mio;
     executor->queue = queue;
+    executor->count_of_pending_tasks = 0;
 
     return executor;
  }
 
 void waker_wake(Waker* waker) {
+    if (waker->future == NULL) {
+        debug("Waker %p has no future\n", waker);
+        return;
+    }
     debug("Waking up Waker %p\n", waker);
-    executor_spawn(waker->executor, waker->future); // TODO: sprawdzić czy to jest ok
+    executor_spawn(waker->executor, waker->future);
 }
 
 void executor_spawn(Executor* executor, Future* fut) { 
@@ -142,6 +147,7 @@ void executor_spawn(Executor* executor, Future* fut) {
         return;
     }
     fut->is_active = true;
+    executor->count_of_pending_tasks++;
  }
 
 // Executor w pętli przetwarza zadania:
@@ -165,7 +171,7 @@ void executor_run(Executor* executor) {
         _futures_queue_pop(executor->queue, &future);
         if (future == NULL) {
             debug("Executor %p failed to pop future from the queue\n", executor);
-            return;
+            continue;
         }
 
         Waker waker;
@@ -178,6 +184,7 @@ void executor_run(Executor* executor) {
         if (future_state == FUTURE_COMPLETED || future_state == FUTURE_FAILURE) {
             debug("Executor %p task completed with future_state=%d\n", executor, future_state);
             future->is_active = false;
+            executor->count_of_pending_tasks--;
             // TODO: czy nie trzeba ustawiać future->ok
             future->errcode = future_state == FUTURE_COMPLETED ? 0 : 1; // TODO: czy tak trzeba ustawiać?
         }
@@ -187,7 +194,7 @@ void executor_run(Executor* executor) {
             // i wtedy mio_poll jest gdy spawned_task > 0 i _futures_queue_size(executor->queue) == 0
         }
 
-        if (_futures_queue_size(executor->queue) == 0) { // TODO: nie do końca musi być tutaj
+        if (_futures_queue_size(executor->queue) == 0 && executor->count_of_pending_tasks > 0) { // TODO: nie do końca musi być tutaj
             mio_poll(executor->mio);
         }
     }

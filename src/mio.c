@@ -120,8 +120,6 @@ void mio_poll(Mio* mio)
 
     for (int i = 0; i < event_count; i++) {
         struct epoll_event* event = &events[i];
-        int fd = event->data.fd;
-        debug("Mio (%p) polling event %d on fd %d\n", mio, i, fd);
 
         Future* future = event->data.ptr;
         Waker waker = { .future = future, .executor = mio->executor };

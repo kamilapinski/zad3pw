@@ -7,8 +7,8 @@ set(CMAKE_C_STANDARD "11")
 
 # We're using ASAN (Address Sanitizer), so that debugging memory corruptions should be easier.
 # Make sure to test your program without `-fsanitize=address`, too!
-# set(CMAKE_C_FLAGS "-g -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wuninitialized -Wmissing-field-initializers -fsanitize=address")
-set(CMAKE_C_FLAGS "-g -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wuninitialized -Wmissing-field-initializers")
+set(CMAKE_C_FLAGS "-g -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wuninitialized -Wmissing-field-initializers -fsanitize=address")
+# set(CMAKE_C_FLAGS "-g -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wuninitialized -Wmissing-field-initializers")
 
 include_directories(include)
 include_directories(src)

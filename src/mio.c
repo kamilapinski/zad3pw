@@ -66,14 +66,24 @@ int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
     event->data.fd = fd;
     event->data.ptr = waker.future;
 
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, event)) {
-        debug("Failed to add file descriptor to epoll\n");
-        free(event);
-        return -1;
+    if (mio->events[fd] != NULL) {
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, event)) {
+            debug("Failed to modify file descriptor in epoll\n");
+            free(event);
+            return -1;
+        }
+        free(mio->events[fd]);
+        mio->events[fd] = event;
     }
-
-    mio->events[fd] = event;
-    mio->count_of_registered_fds++;
+    else {
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, event)) {
+            debug("Failed to add file descriptor to epoll\n");
+            free(event);
+            return -1;
+        }
+        mio->events[fd] = event;
+        mio->count_of_registered_fds++;
+    }
 
     return 0;
 }
@@ -87,6 +97,11 @@ int mio_unregister(Mio* mio, int fd)
     if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL)) {
         debug("Failed to remove file descriptor from epoll\n");
         return -1;
+    }
+
+    if (mio->events[fd] != NULL) {
+        free(mio->events[fd]);
+        mio->events[fd] = NULL;
     }
 
     mio->count_of_registered_fds--;
@@ -122,7 +137,6 @@ int _mio_unregister_descriptors(Mio* mio) {
     for (size_t i = 0; i < MAX_FDS; i++) {
         if (mio->events[i] != NULL) {
             mio_unregister(mio, i);
-            free(mio->events[i]);
         }
     }
     return 0;

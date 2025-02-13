@@ -11,9 +11,6 @@ static FutureState then_progress(Future* base, Mio* mio, Waker waker)
     debug("ThenFuture %p progress. Arg=%p\n", self, self->base.arg);
 
     if (!self->fut1_completed) {
-        // podaję mojego waker'a, żebym ja został obudzony
-        // i zostanę obudzony zarówno jeżeli fu1 wywoła waker_wake
-        // jak i mio_register bo tam też podaję mojego waker'a
         debug("ThenFuture %p fut1_progress\n", self);
 
         FutureState fut1_state = self->fut1->progress(self->fut1, mio, waker);
@@ -29,10 +26,6 @@ static FutureState then_progress(Future* base, Mio* mio, Waker waker)
             return FUTURE_FAILURE;
         }
         else {
-            // chyba nie możemy zrobić mio_register, bo nie wiadomo na co czekać
-            // TODO: chyba jednak trzeba zrobić opakowanie na fut, który będzie
-            // wywoływać mio_register
-            //waker_wake(&waker);
             return FUTURE_PENDING;
         }
     }
@@ -41,7 +34,6 @@ static FutureState then_progress(Future* base, Mio* mio, Waker waker)
         return FUTURE_FAILURE;
     }
 
-    // fut1 completed
     self->fut2->arg = self->fut1->ok;
 
     debug("ThenFuture %p fut2_progress\n", self);
@@ -56,8 +48,6 @@ static FutureState then_progress(Future* base, Mio* mio, Waker waker)
         return FUTURE_FAILURE;
     }
     else {
-        // chyba nie możemy zrobić mio_register, bo nie wiadomo na co czekać
-        //waker_wake(&waker);
         return FUTURE_PENDING;
     }
 }
@@ -96,7 +86,6 @@ static FutureState join_pack_progress(Future* base, Mio* mio, Waker waker)
             self->father->fut2_completed = true;
 
         if (self->father->fut1_completed && self->father->fut2_completed) {
-            // trzeba obudzić ojca
             executor_spawn(waker.executor, (Future*)self->father);
         }
         
@@ -348,8 +337,6 @@ SelectFuture future_select(Future* fut1, Future* fut2)
 
     *pack1 = future_select_pack(fut1, 1, NULL);
     *pack2 = future_select_pack(fut2, 2, NULL);
-
-    // TODO: zdeallocowac
 
     return (SelectFuture) {
         .base = future_create(select_progress),

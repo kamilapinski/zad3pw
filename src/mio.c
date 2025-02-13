@@ -49,13 +49,6 @@ Mio* mio_create(Executor* executor) {
     return mio;
 }
 
-// Mio pozwala w funkcji mio register zarejestrować, że dany waker ma zostać 
-// wywołany, gdy zajdzie odpowiednie zdarzenie; te zdarzenia to gotowość danego 
-// deskryptora do odczytu  lub zapisu (w przypadku tego zadania domowego). 
-
-// Mio ma za zadanie zapewnić, że zawoła wakera dopiero gdy na danym zasobie 
-// (deskryptorze) można wykonać operację read/write w sposób nieblokujący.
-
 int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
 {
     debug("Registering (in Mio = %p) fd = %d with events = %d\n", mio, fd, events);
@@ -101,9 +94,6 @@ int mio_unregister(Mio* mio, int fd)
     return 0;
 }
 
-// Mio pozwala w funkcji mio_poll: uśpić wołający wątek aż dojdzie do co najmniej 
-// jednego z zarejestrowanych zdarzeń i wywołać dla nich odpowiedniego wakera.
-
 void mio_poll(Mio* mio)
 {
     debug("Mio (%p) polling\n", mio);
@@ -139,7 +129,7 @@ int _mio_unregister_descriptors(Mio* mio) {
 }
 
 void mio_destroy(Mio* mio) {
-    if(_mio_unregister_descriptors(mio)) { // czy trzeba zamykać deskryptory?
+    if(_mio_unregister_descriptors(mio)) {
         debug("Failed to unregister descriptors\n");
     }
 
